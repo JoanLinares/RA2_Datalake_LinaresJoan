@@ -248,10 +248,75 @@ def run_loader():
         return False
 
 
+def run_gaming_loader():
+    """Ejecuta el pipeline COMPLETO de GAMING para NeonDB + Tableau"""
+    logger.info("\n" + "="*70)
+    logger.info("PIPELINE GAMING: EXTRACCION → TRANSFORMACION → CARGA NEONDB")
+    logger.info("="*70)
+    
+    try:
+        from src.warehouse.loader_NeonDB import WarehouseLoader
+        
+        DATABASE_URL = os.getenv('DATABASE_URL')
+        if not DATABASE_URL:
+            logger.error("❌ DATABASE_URL no encontrada en .env")
+            return False
+        
+        # Crear loader y conectar
+        loader = WarehouseLoader(DATABASE_URL)
+        loader.connect()
+        
+        # Ejecutar pipeline gaming
+        success = loader.load_gaming_to_warehouse()
+        
+        if success:
+            logger.info("✅ Pipeline gaming completado exitosamente")
+            logger.info("\n📊 Próximos pasos:")
+            logger.info("   1. Conectar Tableau a NeonDB")
+            logger.info("   2. Crear datasource con tabla dim_market (gaming)")
+            logger.info("   3. Visualizar gaming_type, bet_type, volume, liquidity")
+            logger.info("   4. Crear 2 dashboards con 4 gráficos cada uno")
+        else:
+            logger.error("❌ Error en pipeline gaming")
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"❌ Error durante carga gaming: {e}")
+        logger.exception("Detalles:")
+        return False
+
+
 def main():
     """Función principal - orquesta todo el pipeline"""
     
-    logger.info("\n" + "🚀 "*35)
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Pipeline ETL Polymarket')
+    parser.add_argument(
+        '--gaming', 
+        action='store_true',
+        help='Ejecutar solo el pipeline de GAMING (para Tableau)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Si se especifica --gaming, ejecutar solo gaming
+    if args.gaming:
+        logger.info("\n" + "🎮 "*35)
+        logger.info("PIPELINE ESPECIFICO: GAMING PARA TABLEAU")
+        logger.info("🎮 "*35 + "\n")
+        
+        if not run_gaming_loader():
+            logger.error("❌ Pipeline gaming abortado")
+            return 1
+        
+        logger.info("\n" + "✅ "*35)
+        logger.info("GAMING PIPELINE COMPLETADO")
+        logger.info("✅ "*35 + "\n")
+        return 0
+    
+    # Si no, ejecutar pipeline completo normal
     logger.info("INICIANDO PIPELINE COMPLETO DE ETL")
     logger.info("Polymarket → Delta Lake → S3 → NeonDB")
     logger.info("🚀 "*35 + "\n")

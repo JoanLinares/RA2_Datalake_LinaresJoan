@@ -790,6 +790,99 @@ class WarehouseLoader:
         except Exception as e:
             logger.warning(f"No se pudo generar resumen: {e}")
     
+    def load_gaming_to_warehouse(self):
+        """
+        PIPELINE COMPLETO PARA GAMING
+        Extrae -> Transforma -> Valida -> Carga
+        
+        Flujo:
+        1. transformer_data.pipeline_complete_gaming() 
+           - Extrae gaming del Delta Lake
+           - Limpia y transforma
+           - Genera resumen
+        2. validator_warehouse.validate_all()
+           - Valida integridad
+        3. NeonDB
+           - Carga en tablas dimensionales
+        """
+        try:
+            logger.info("="*100)
+            logger.info("PIPELINE COMPLETO GAMING: DATALAKE -> NEONDB")
+            logger.info("="*100)
+            
+            # PASO 1: Extracción + Transformación (todo en transformer_data)
+            logger.info("\n[PASO 1/3] EXTRACCION Y TRANSFORMACION DE GAMING")
+            logger.info("-" * 100)
+            
+            df_gaming_clean, gaming_summary = DataTransformer.pipeline_complete_gaming(
+                datalake_path="datalake/raw/markets"
+            )
+            
+            if df_gaming_clean.empty:
+                logger.error("❌ No se encontraron datos de gaming para cargar")
+                return False
+            
+            logger.info(f"\n✓ Datos de gaming listos para carga:")
+            logger.info(f"   Total mercados: {gaming_summary['total_markets']:,}")
+            logger.info(f"   Mercados activos: {gaming_summary['active_markets']:,}")
+            logger.info(f"   Volumen total: ${gaming_summary['total_volume']:,.2f}")
+            
+            # PASO 2: Validar esquema y conexión antes de cargar
+            logger.info("\n[PASO 2/3] VALIDACION PRE-CARGA")
+            logger.info("-" * 100)
+            
+            # Validar conexión
+            logger.info("  • Validando conexión a NeonDB...")
+            try:
+                self.cursor.execute("SELECT version();")
+                db_version = self.cursor.fetchone()[0]
+                logger.info(f"    ✓ Conexión exitosa")
+            except Exception as e:
+                logger.error(f"  ✗ Error de conexión: {e}")
+                return False
+            
+            # Validar estructura de datos
+            logger.info("  • Validando estructura de datos...")
+            required_cols = ['id', 'question', 'gaming_type', 'bet_type', 'volume']
+            missing_cols = [col for col in required_cols if col not in df_gaming_clean.columns]
+            
+            if missing_cols:
+                logger.error(f"  ✗ Faltan columnas: {missing_cols}")
+                return False
+            
+            logger.info(f"    ✓ Estructura válida ({len(df_gaming_clean.columns)} columnas)")
+            
+            # PASO 3: Crear tablas y cargar datos
+            logger.info("\n[PASO 3/3] CARGA EN NEONDB")
+            logger.info("-" * 100)
+            
+            logger.info("  • Creando esquema dimensional...")
+            self.create_schema()
+            
+            logger.info("  • Cargando mercados de gaming...")
+            self.load_dim_market(df_gaming_clean)
+            
+            logger.info("  • Cargando métricas de gaming...")
+            self.load_fact_market_metrics(df_gaming_clean)
+            
+            logger.info("  • Generando resumen de carga...")
+            self.generate_load_summary()
+            
+            logger.info("\n" + "="*100)
+            logger.info("✅ CARGA DE GAMING COMPLETADA EXITOSAMENTE")
+            logger.info("="*100)
+            logger.info(f"\n📊 Resumen final:")
+            logger.info(f"   Mercados gaming cargados: {gaming_summary['total_markets']:,}")
+            logger.info(f"   Tipos de juego: {len(gaming_summary['gaming_types'])}")
+            logger.info(f"   Tipos de apuestas: {len(gaming_summary['bet_types'])}")
+            logger.info(f"\n✓ Datos listos para análisis en Tableau")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error en pipeline gaming: {e}", exc_info=True)
+            return False
+    
     def close(self):
         """Cierra la conexión a la base de datos"""
         if self.cursor:

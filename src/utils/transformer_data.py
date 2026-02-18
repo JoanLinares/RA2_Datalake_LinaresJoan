@@ -1,13 +1,16 @@
 """
 Data Transformer - Fase 2
 Normalización y validación de datos antes de cargar al warehouse
-Maneja: desanidación de JSON, normalización de tipos, limpieza de datos
+Maneja: desanidación de JSON, normalización de tipos, limpieza de datos, extracción de gaming
 """
 import json
 import logging
+import re
 from typing import List, Tuple, Any, Optional
+from pathlib import Path
 import pandas as pd
 import numpy as np
+from deltalake import DeltaTable
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +308,296 @@ class DataTransformer:
         
         logger.info(f"Mercados limpios: {len(df)} registros válidos")
         return df
+    
+    @staticmethod
+    def extract_gaming_from_datalake(datalake_path: str = "datalake/raw/markets") -> pd.DataFrame:
+        """
+        EXTRAE datos de gaming directamente del Delta Lake
+        Punto de entrada para el pipeline: loader_NeonDB -> transformer -> validator -> NeonDB
+        
+        Args:
+            datalake_path: Ruta al Delta Lake de mercados
+        
+        Returns:
+            DataFrame con mercados de gaming filtrados y listos para transformar
+        """
+        logger.info("="*100)
+        logger.info("EXTRAYENDO DATOS GAMING DEL DELTA LAKE")
+        logger.info("="*100)
+        
+        try:
+            # Leer Delta Lake
+            delta_path = Path(datalake_path)
+            if not delta_path.exists():
+                logger.error(f"Delta Lake no encontrado en {delta_path}")
+                return pd.DataFrame()
+            
+            logger.info(f"\n[EXTRACCION] Leyendo Delta Lake desde {delta_path}...")
+            dt = DeltaTable(str(delta_path))
+            df = dt.to_pandas()
+            logger.info(f"✓ {len(df):,} mercados cargados")
+            
+            # Filtrar gaming
+            logger.info(f"\n[FILTRANDO] Aplicando filtros de gaming...")
+            gaming_keywords = ['game', 'gaming', 'esports', 'esport', 'stream', 'twitch', 
+                              'dota', 'cs:go', 'valorant', 'fortnite', 'minecraft', 
+                              'overwatch', 'league', 'lol', 'nba 2k', 'madden', 'fifa', 'nfl']
+            
+            df['question_lower'] = df['question'].str.lower()
+            gaming_mask = df['question_lower'].str.contains('|'.join(gaming_keywords), regex=True, na=False)
+            df_gaming = df[gaming_mask].copy()
+            
+            logger.info(f"✓ {len(df_gaming):,} mercados de gaming encontrados")
+            logger.info(f"   ({(len(df_gaming)/len(df)*100):.1f}% del total)")
+            
+            return df_gaming
+            
+        except Exception as e:
+            logger.error(f"❌ Error extrayendo del Delta Lake: {e}", exc_info=True)
+            return pd.DataFrame()
+    
+    @staticmethod
+    def extract_gaming_type(question: str) -> Optional[str]:
+        """
+        Extrae el tipo de juego/esports del título del mercado
+        Retorna: 'DOTA', 'Valorant', 'CS:GO', 'League of Legends', 'Fortnite', etc.
+        """
+        if not question or pd.isna(question):
+            return None
+        
+        question_lower = str(question).lower()
+        
+        # Mapeo de keywords a tipos de juego
+        game_mapping = {
+            'DOTA': ['dota', 'dota 2', 'dota2'],
+            'Valorant': ['valorant'],
+            'CS:GO': ['cs:go', 'csgo', 'counter-strike'],
+            'League of Legends': ['league of legends', 'lol', 'leagueoflegends'],
+            'Fortnite': ['fortnite'],
+            'Minecraft': ['minecraft'],
+            'Overwatch': ['overwatch'],
+            'Apex Legends': ['apex', 'apex legends'],
+            'Call of Duty': ['call of duty', 'cod'],
+            'Hearthstone': ['hearthstone'],
+            'StarCraft': ['starcraft', 'starcraft 2', 'sc2'],
+            'Dota2': ['the international', 'ti8', 'ti9', 'ti10', 'ti11'],
+            'Fighting Games': ['fighting', 'street fighter', 'tekken', 'mortal kombat'],
+            'Esports': ['esports', 'esport', 'tournament', 'champion'],
+            'Streaming': ['twitch', 'youtube', 'streamer', 'streaming'],
+        }
+        
+        for game_type, keywords in game_mapping.items():
+            for keyword in keywords:
+                if keyword in question_lower:
+                    return game_type
+        
+        # Si solo dice "game" o "gaming", retornar genérico
+        if 'game' in question_lower or 'gaming' in question_lower:
+            return 'Gaming'
+        
+        return None
+    
+    @staticmethod
+    def extract_bet_type(question: str) -> Optional[str]:
+        """
+        Extrae el tipo de apuesta
+        Retorna: 'Match Winner', 'Spread', 'Over/Under', 'Prop Bet', etc.
+        """
+        if not question or pd.isna(question):
+            return None
+        
+        question_lower = str(question).lower()
+        
+        # Detectar tipos de apuestas
+        if 'will win' in question_lower or 'who will win' in question_lower:
+            return 'Match Winner'
+        elif 'spread' in question_lower or 'by more than' in question_lower or 'by less than' in question_lower:
+            return 'Spread'
+        elif 'over' in question_lower and 'under' in question_lower:
+            return 'Over/Under'
+        elif 'total' in question_lower and ('point' in question_lower or 'kill' in question_lower):
+            return 'Over/Under'
+        elif 'first' in question_lower and 'win' in question_lower:
+            return 'First Blood'
+        elif 'mvp' in question_lower or 'best player' in question_lower:
+            return 'MVP/Best Player'
+        elif 'map' in question_lower or 'round' in question_lower:
+            return 'Round/Map Winner'
+        else:
+            return 'Prop Bet'
+    
+    @staticmethod
+    def validate_and_clean_gaming_markets(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Pipeline completo para limpiar y preparar mercados de GAMING para análisis
+        Filtra solo gaming/esports y extrae información relevante
+        """
+        logger.info("Iniciando limpieza de mercados GAMING...")
+        df = df.copy()
+        
+        # PASO 1: Filtrar solo Gaming/Esports
+        gaming_keywords = ['game', 'gaming', 'esports', 'esport', 'stream', 'twitch', 
+                          'dota', 'cs:go', 'valorant', 'fortnite', 'minecraft', 
+                          'overwatch', 'league', 'lol', 'nba 2k', 'madden', 'fifa', 'nfl']
+        
+        df['question_lower'] = df['question'].str.lower()
+        gaming_mask = df['question_lower'].str.contains('|'.join(gaming_keywords), regex=True, na=False)
+        df = df[gaming_mask].copy()
+        
+        initial_count = len(df)
+        logger.info(f"Mercados GAMING encontrados: {initial_count}")
+        
+        # PASO 2: Deduplicar por ID
+        dup_count = len(df[df.duplicated(subset=['id'], keep=False)])
+        df = df.drop_duplicates(subset=['id'], keep='first')
+        logger.info(f"Duplicados removidos: {dup_count - (dup_count - len(df))}")
+        
+        # PASO 3: Extraer características de gaming
+        df['gaming_type'] = df['question'].apply(DataTransformer.extract_gaming_type)
+        df['bet_type'] = df['question'].apply(DataTransformer.extract_bet_type)
+        
+        # PASO 4: Normalizar booleanos
+        boolean_cols = ['active', 'closed', 'featured']
+        for col in boolean_cols:
+            if col in df.columns:
+                df[col] = df[col].apply(DataTransformer.normalize_boolean)
+        
+        # PASO 5: Normalizar strings
+        df['question'] = df['question'].apply(
+            lambda x: DataTransformer.clean_string(x, max_length=500)
+        )
+        df['description'] = df['description'].apply(
+            lambda x: DataTransformer.clean_string(x, max_length=2000)
+        ) if 'description' in df.columns else None
+        
+        # PASO 6: Normalizar números (volumen, liquidez, precios)
+        numeric_cols = [
+            'volume', 'volume24hr', 'volume1wk', 'volume1mo', 'volume1yr',
+            'liquidity', 'liquidityAmm', 'liquidityClob', 'lastTradePrice',
+            'bestBid', 'bestAsk', 'spread'
+        ]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = df[col].apply(DataTransformer.normalize_numeric)
+        
+        # PASO 7: Normalizar fechas
+        date_cols = ['endDate', 'createdAt', 'updatedAt', 'startDate']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        # PASO 8: Deserializar outcomes (Yes/No, Team A/Team B, etc.)
+        if 'outcomes' in df.columns:
+            df['outcomes_list'] = df['outcomes'].apply(DataTransformer.normalize_outcomes)
+            df['outcome_count'] = df['outcomes_list'].apply(
+                lambda x: len(x) if isinstance(x, list) else 0
+            )
+        
+        # PASO 9: Extraer campo de precios si existe
+        if 'outcomePrices' in df.columns:
+            df['prices_list'] = df['outcomePrices'].apply(DataTransformer.normalize_prices)
+        
+        # PASO 10: Crear campo de categoría simplificada
+        df['category_simplified'] = 'Gaming'
+        
+        # PASO 11: Seleccionar columnas relevantes para análisis
+        relevant_cols = [
+            'id', 'question', 'gaming_type', 'bet_type', 'category', 'subcategory',
+            'volume', 'volume24hr', 'volume1wk', 'liquidity', 'liquidityAmm', 'liquidityClob',
+            'lastTradePrice', 'bestBid', 'bestAsk', 'spread',
+            'outcomes_list', 'outcome_count', 'prices_list',
+            'active', 'closed', 'featured',
+            'createdAt', 'updatedAt', 'endDate', 'startDate',
+            'slug', 'marketType', 'description'
+        ]
+        
+        # Mantener solo columnas que existan
+        available_cols = [col for col in relevant_cols if col in df.columns]
+        df = df[available_cols].copy()
+        
+        # PASO 12: Remover filas sin volumen o con datos vacíos
+        if 'volume' in df.columns:
+            initial_len = len(df)
+            df = df[df['volume'].notna()].copy()
+            logger.info(f"Mercados sin volumen removidos: {initial_len - len(df)}")
+        
+        logger.info(f"Mercados GAMING limpios finales: {len(df)} registros válidos")
+        logger.info(f"Tipos de juego encontrados: {df['gaming_type'].nunique()}")
+        logger.info(f"Distribución: {dict(df['gaming_type'].value_counts())}")
+        
+        return df
+    
+    @staticmethod
+    def generate_gaming_summary(df: pd.DataFrame) -> dict:
+        """
+        Genera un resumen estadístico de los datos de gaming
+        Útil para validación pre-carga
+        """
+        summary = {
+            'total_markets': len(df),
+            'gaming_types': dict(df['gaming_type'].value_counts()),
+            'bet_types': dict(df['bet_type'].value_counts()) if 'bet_type' in df.columns else {},
+            'active_markets': int(df['active'].sum()) if 'active' in df.columns else 0,
+            'closed_markets': int(df['closed'].sum()) if 'closed' in df.columns else 0,
+            'total_volume': float(df['volume'].sum()) if 'volume' in df.columns else 0,
+            'avg_volume': float(df['volume'].mean()) if 'volume' in df.columns else 0,
+            'total_liquidity': float(df['liquidity'].sum()) if 'liquidity' in df.columns else 0,
+            'avg_liquidity': float(df['liquidity'].mean()) if 'liquidity' in df.columns else 0,
+            'outcome_types': {
+                '2_outcomes': int((df['outcome_count'] == 2).sum()) if 'outcome_count' in df.columns else 0,
+                '3_outcomes': int((df['outcome_count'] == 3).sum()) if 'outcome_count' in df.columns else 0,
+                '4plus_outcomes': int((df['outcome_count'] >= 4).sum()) if 'outcome_count' in df.columns else 0,
+            }
+        }
+        return summary
+    
+    @staticmethod
+    def pipeline_complete_gaming(datalake_path: str = "datalake/raw/markets") -> Tuple[pd.DataFrame, dict]:
+        """
+        PIPELINE COMPLETO DE GAMING
+        Integra: Extracción -> Limpieza -> Resumen
+        
+        Función principal que se llama desde loader_NeonDB.py
+        
+        Returns:
+            (df_gaming_limpio, summary_stats)
+        """
+        logger.info("\n" + "="*100)
+        logger.info("INICIANDO PIPELINE COMPLETO GAMING")
+        logger.info("="*100)
+        
+        try:
+            # PASO 1: Extraer del Delta Lake
+            logger.info("\n[PASO 1/3] EXTRACCION DEL DELTA LAKE")
+            df_raw = DataTransformer.extract_gaming_from_datalake(datalake_path)
+            
+            if df_raw.empty:
+                logger.error("No se encontraron datos de gaming")
+                return pd.DataFrame(), {}
+            
+            # PASO 2: Limpiar y transformar
+            logger.info("\n[PASO 2/3] LIMPIEZA Y TRANSFORMACION")
+            df_clean = DataTransformer.validate_and_clean_gaming_markets(df_raw)
+            
+            if df_clean.empty:
+                logger.error("DataFrame vacío después de limpieza")
+                return pd.DataFrame(), {}
+            
+            # PASO 3: Generar resumen
+            logger.info("\n[PASO 3/3] GENERANDO RESUMEN")
+            summary = DataTransformer.generate_gaming_summary(df_clean)
+            
+            logger.info(f"\n✅ PIPELINE COMPLETADO EXITOSAMENTE")
+            logger.info(f"   Total mercados gaming: {summary['total_markets']:,}")
+            logger.info(f"   Mercados activos: {summary['active_markets']:,}")
+            logger.info(f"   Volumen total: ${summary['total_volume']:,.2f}")
+            
+            return df_clean, summary
+            
+        except Exception as e:
+            logger.error(f"❌ Error en pipeline gaming: {e}", exc_info=True)
+            return pd.DataFrame(), {}
+    
     
     @staticmethod
     def extract_event_tag_relations(events_df: pd.DataFrame) -> List[Tuple[str, str]]:
