@@ -630,7 +630,8 @@ class WarehouseLoader:
             logger.info("INICIANDO CARGA: DATA LAKE -> NEONDB")
             logger.info("="*70)
             
-            logger.info("\n[1/3] Leyendo datos desde Delta Lake...")
+            # PASO 1: Lectura desde Delta Lake
+            logger.info("\n[1/4] Leyendo datos desde Delta Lake...")
             
             events_path = BASE_PATH / "events"
             markets_path = BASE_PATH / "markets"
@@ -640,7 +641,6 @@ class WarehouseLoader:
             if events_path.exists():
                 events_df = DeltaTable(str(events_path)).to_pandas()
                 logger.info(f"Leídos {len(events_df)} eventos")
-                events_df = DataTransformer.validate_and_clean_events(events_df)
             else:
                 events_df = pd.DataFrame()
                 logger.warning("No se encontró datos de eventos")
@@ -648,7 +648,6 @@ class WarehouseLoader:
             if markets_path.exists():
                 markets_df = DeltaTable(str(markets_path)).to_pandas()
                 logger.info(f"Leídos {len(markets_df)} mercados")
-                markets_df = DataTransformer.validate_and_clean_markets(markets_df)
             else:
                 markets_df = pd.DataFrame()
                 logger.warning("No se encontró datos de mercados")
@@ -667,13 +666,69 @@ class WarehouseLoader:
                 tags_df = pd.DataFrame()
                 logger.warning("No se encontró datos de tags")
             
-            logger.info("\n[2/3] Creando esquema dimensional en NeonDB...")
+            # PASO 2: Transformación con DataTransformer
+            logger.info("\n[2/4] Transformando y limpiando datos...")
+            
+            if not events_df.empty:
+                logger.info("  • Transformando eventos...")
+                events_df = DataTransformer.validate_and_clean_events(events_df)
+                logger.info(f"    ✓ Eventos procesados: {len(events_df)} registros válidos")
+            
+            if not markets_df.empty:
+                logger.info("  • Transformando mercados...")
+                markets_df = DataTransformer.validate_and_clean_markets(markets_df)
+                logger.info(f"    ✓ Mercados procesados: {len(markets_df)} registros válidos")
+            
+            logger.info("  ✓ Transformación completada")
+            
+            # PASO 3: Validación PRE-CARGA con WarehouseValidator
+            logger.info("\n[3/4] Ejecutando validación pre-carga...")
+            
+            # Validar que tenemos datos mínimos para cargar
+            if events_df.empty and markets_df.empty:
+                logger.error("  ✗ No hay datos para cargar (eventos y mercados vacíos)")
+                raise ValueError("No hay datos para cargar en el warehouse")
+            
+            # Validar estructura de datos
+            logger.info("  • Validando estructura de eventos...")
+            if not events_df.empty:
+                required_event_cols = ['id', 'title']
+                missing_cols = [col for col in required_event_cols if col not in events_df.columns]
+                if missing_cols:
+                    logger.error(f"  ✗ Faltan columnas requeridas en eventos: {missing_cols}")
+                    raise ValueError(f"Columnas faltantes en eventos: {missing_cols}")
+                logger.info(f"    ✓ Estructura válida ({len(events_df.columns)} columnas)")
+            
+            logger.info("  • Validando estructura de mercados...")
+            if not markets_df.empty:
+                required_market_cols = ['id', 'question']
+                missing_cols = [col for col in required_market_cols if col not in markets_df.columns]
+                if missing_cols:
+                    logger.error(f"  ✗ Faltan columnas requeridas en mercados: {missing_cols}")
+                    raise ValueError(f"Columnas faltantes en mercados: {missing_cols}")
+                logger.info(f"    ✓ Estructura válida ({len(markets_df.columns)} columnas)")
+            
+            # Validar conexión a NeonDB antes de cargar
+            logger.info("  • Validando conexión a NeonDB...")
+            try:
+                self.cursor.execute("SELECT version();")
+                db_version = self.cursor.fetchone()[0]
+                logger.info(f"    ✓ Conexión exitosa: {db_version.split(',')[0]}")
+            except Exception as e:
+                logger.error(f"  ✗ Error de conexión a NeonDB: {e}")
+                raise
+            
+            logger.info("  ✓ Validación pre-carga completada")
+            
+            # PASO 4: Carga a NeonDB
+            logger.info("\n[4/4] Cargando datos en NeonDB...")
+            
+            logger.info("  • Creando esquema dimensional...")
             self.create_schema()
             
+            logger.info("  • Cargando dimensiones...")
             if not events_df.empty:
                 self.load_dim_event(events_df)
-            
-            if not events_df.empty:
                 self.load_dim_tag(events_df)
             
             if not series_df.empty:
@@ -681,8 +736,10 @@ class WarehouseLoader:
             
             if not markets_df.empty:
                 self.load_dim_market(markets_df)
+                logger.info("  • Cargando métricas...")
                 self.load_fact_market_metrics(markets_df)
             
+            logger.info("  • Cargando relaciones...")
             if not events_df.empty:
                 self.load_event_tag_relations(events_df)
             
@@ -691,19 +748,20 @@ class WarehouseLoader:
             
             self.generate_load_summary()
             
-            logger.info("\n✓ Carga completada en NeonDB")
+            logger.info("\n  ✓ Carga completada en NeonDB")
             
-            logger.info("\n[3/3] Ejecutando validación de integridad...")
+            # Validación POST-CARGA (integridad del warehouse)
+            logger.info("\n  • Ejecutando validación post-carga (integridad)...")
             validator = WarehouseValidator(self.database_url)
             validator.connect()
             validator.validate_all()
             
-            logger.info("="*70)
+            logger.info("\n" + "="*70)
             logger.info("✓ PROCESO COMPLETADO EXITOSAMENTE")
             logger.info("="*70)
             
         except Exception as e:
-            logger.error(f"✗ Error durante la carga: {e}")
+            logger.error(f"\n✗ Error durante la carga: {e}")
             raise
         finally:
             self.close()
