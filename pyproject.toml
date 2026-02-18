@@ -1,0 +1,17 @@
+[project]
+name = "polymarket-extractor"
+version = "0.1.0"
+description = "Proceso de extracción de datos de Polymarket con almacenamiento en Delta Lake y Data Warehouse en NeonDB"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+    "deltalake>=0.15.0",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
+    "python-dotenv>=1.0.0",
+    "psycopg2-binary>=2.9.0",
+    "sqlalchemy>=2.0.0",
+]
+
+[tool.uv]
+package = false
