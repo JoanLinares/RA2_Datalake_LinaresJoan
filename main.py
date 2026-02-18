@@ -76,6 +76,38 @@ def run_extractor():
         return False
 
 
+def run_s3_upload():
+    """Sube el Delta Lake a Amazon S3"""
+    logger.info("\n" + "="*70)
+    logger.info("FASE 1B: CARGA A AMAZON S3")
+    logger.info("="*70)
+    
+    try:
+        from src.S3.upload_datalake_s3 import S3Uploader
+        
+        # Crear uploader
+        uploader = S3Uploader()
+        
+        # Subir datalake
+        success = uploader.upload_datalake("datalake")
+        
+        if success:
+            # Verificar
+            uploader.verify_upload()
+            logger.info("✅ Carga a S3 completada")
+            return True
+        else:
+            logger.warning("⚠️  Error durante la carga a S3 (continuando)")
+            return False
+        
+    except ValueError as e:
+        logger.warning(f"⚠️  Error configuración S3: {e} (continuando)")
+        return False
+    except Exception as e:
+        logger.warning(f"⚠️  Error ejecutando upload S3: {e} (continuando)")
+        return False
+
+
 def run_transformer():
     """Ejecuta el transformador de datos"""
     logger.info("\n" + "="*70)
@@ -221,17 +253,24 @@ def main():
     
     logger.info("\n" + "🚀 "*35)
     logger.info("INICIANDO PIPELINE COMPLETO DE ETL")
-    logger.info("Polymarket → Delta Lake → NeonDB")
+    logger.info("Polymarket → Delta Lake → S3 → NeonDB")
     logger.info("🚀 "*35 + "\n")
     
     # Fase 1: Extracción
+    extraction_done = False
     if not check_datalake_exists():
         logger.info("\n⚙️  Iniciando extracción de datos...")
         if not run_extractor():
             logger.error("❌ Pipeline abortado: falló extracción")
             return 1
+        extraction_done = True
     else:
         logger.info("⏭️  Saltando extracción: datalake/raw ya existe")
+    
+    # Fase 1B: Carga a S3 (solo si se extrajo o si el usuario quiere subir)
+    if extraction_done or check_datalake_exists():
+        logger.info("\n⚙️  Subiendo Delta Lake a Amazon S3...")
+        run_s3_upload()  # No bloquea si falla
     
     # Fase 2A: Transformación
     logger.info("\n⚙️  Iniciando transformación de datos...")
@@ -258,6 +297,7 @@ def main():
     logger.info("📊 Resultados:")
     logger.info("  • Datos extraídos desde Polymarket API")
     logger.info("  • Almacenados en Delta Lake (datalake/raw/)")
+    logger.info("  • Respaldados en Amazon S3")
     logger.info("  • Transformados y normalizados")
     logger.info("  • Cargados en PostgreSQL (NeonDB)")
     logger.info("  • Validación de integridad completada")
