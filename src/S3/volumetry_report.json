@@ -1,0 +1,82 @@
+{
+  "fecha_extraccion": "2026-02-15T18:13:55.174631",
+  "resumen": {
+    "registros_por_entidad": {
+      "events": 200704,
+      "markets": 452247,
+      "series": 1102,
+      "tags": 5072
+    },
+    "distribucion_markets": {
+      "total": 452247,
+      "activos": 28578,
+      "cerrados": 423669,
+      "porcentaje_activos": 6.32
+    },
+    "distribucion_events": {
+      "total": 200704,
+      "activos": 6805,
+      "cerrados": 193899,
+      "porcentaje_activos": 3.39
+    }
+  },
+  "analisis_relaciones": {
+    "markets_por_evento": {
+      "total_eventos_con_markets": 0,
+      "promedio_markets_por_evento": 0,
+      "maximo_markets_por_evento": 0,
+      "eventos_con_mas_markets": []
+    },
+    "markets_por_serie": {
+      "total_series_con_markets": 0,
+      "promedio_markets_por_serie": 0,
+      "series_con_mas_markets": []
+    },
+    "events_por_tag": {
+      "total_tags_con_events": 4845,
+      "promedio_events_por_tag": 251.73,
+      "tags_mas_populares": [
+        {
+          "tag_id": "102169",
+          "num_events": 133658
+        },
+        {
+          "tag_id": "21",
+          "num_events": 131323
+        },
+        {
+          "tag_id": "101757",
+          "num_events": 131085
+        },
+        {
+          "tag_id": "1312",
+          "num_events": 130037
+        },
+        {
+          "tag_id": "102127",
+          "num_events": 127957
+        },
+        {
+          "tag_id": "102467",
+          "num_events": 51339
+        },
+        {
+          "tag_id": "1",
+          "num_events": 47529
+        },
+        {
+          "tag_id": "100639",
+          "num_events": 47369
+        },
+        {
+          "tag_id": "102892",
+          "num_events": 47121
+        },
+        {
+          "tag_id": "235",
+          "num_events": 36494
+        }
+      ]
+    }
+  }
+}

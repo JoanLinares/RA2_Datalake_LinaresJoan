@@ -354,8 +354,9 @@ class PolymarketExtractor:
             }
         }
         
-        # Guardar reporte en datalake (no en raw)
-        report_path = BASE_PATH.parent / "volumetry_report.json"
+        # Guardar reporte en src/S3 (para GitHub, no S3)
+        report_path = Path("src/S3") / "volumetry_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         with open(report_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         
@@ -408,7 +409,7 @@ class PolymarketExtractor:
         print(f"  - Markets: {self.stats['markets']['total']} registros "
               f"({self.stats['markets']['active']} activos, {self.stats['markets']['closed']} cerrados)")
         print(f"\n📁 Datos almacenados en: {BASE_PATH.absolute()}")
-        print(f"📄 Reporte de volumetría: {BASE_PATH.parent / 'volumetry_report.json'}")
+        print(f"📄 Reporte de volumetría: src/S3/volumetry_report.json")
 
 
 if __name__ == "__main__":
