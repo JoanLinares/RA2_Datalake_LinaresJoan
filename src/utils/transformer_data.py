@@ -337,19 +337,53 @@ class DataTransformer:
             df = dt.to_pandas()
             logger.info(f"✓ {len(df):,} mercados cargados")
             
-            # Filtrar gaming
-            logger.info(f"\n[FILTRANDO] Aplicando filtros de gaming...")
-            gaming_keywords = ['game', 'gaming', 'esports', 'esport', 'stream', 'twitch', 
-                              'dota', 'cs:go', 'valorant', 'fortnite', 'minecraft', 
-                              'overwatch', 'league', 'lol', 'nba 2k', 'madden', 'fifa', 'nfl']
-            
-            df['question_lower'] = df['question'].str.lower()
-            gaming_mask = df['question_lower'].str.contains('|'.join(gaming_keywords), regex=True, na=False)
-            df_gaming = df[gaming_mask].copy()
-            
-            logger.info(f"✓ {len(df_gaming):,} mercados de gaming encontrados")
+            # Filtrar SOLO esports competitivos (100% videojuegos)
+            logger.info(f"\n[FILTRANDO] Aplicando filtros ESPORTS...")
+
+            # Juegos esports con torneos profesionales reales
+            esports_keywords = [
+                # Juegos MOBA
+                'dota', 'dota 2', 'dota2', 'the international',
+                'league of legends', 'leagueoflegends',
+                # FPS competitivos
+                'valorant', 'cs:go', 'csgo', 'counter-strike',
+                'overwatch', 'apex legends',
+                'rainbow six', 'r6',
+                # Battle Royale competitivo
+                'fortnite',
+                # Otros esports
+                'call of duty league', 'cod league',
+                'hearthstone', 'starcraft',
+                'rocket league',
+                # Términos de competición esports
+                'esports', 'esport',
+                # Torneos específicos
+                'blast premier', 'blast bounty', 'esl pro', 'iem ',
+                'faceit', 'pgl major', 'vct ', 'valorant champions',
+                'lck ', 'lcs ', 'lec ', 'worlds 20', 'msi 20',
+                'rlcs', 'owcs', 'hct ', 'dreamhack',
+            ]
+
+            df['question_lower'] = df['question'].fillna('').str.lower()
+            esports_mask = df['question_lower'].str.contains(
+                '|'.join([re.escape(k) for k in esports_keywords]), regex=True, na=False
+            )
+            df_gaming = df[esports_mask].copy()
+
+            # Excluir falsos positivos (no son videojuegos)
+            exclude_keywords = [
+                'nfl', 'nba', 'fifa world cup', 'soccer', 'baseball',
+                'hockey ', 'tennis', 'golf ', 'boxing', 'ufc', 'mma',
+                'horse', 'election', 'politic', 'stock', 'bitcoin',
+            ]
+            exclude_mask = df_gaming['question_lower'].str.contains(
+                '|'.join(exclude_keywords), regex=True, na=False
+            )
+            df_gaming = df_gaming[~exclude_mask].copy()
+
+            logger.info(f"✓ {len(df_gaming):,} mercados ESPORTS encontrados")
             logger.info(f"   ({(len(df_gaming)/len(df)*100):.1f}% del total)")
-            
+
             return df_gaming
             
         except Exception as e:
@@ -367,35 +401,29 @@ class DataTransformer:
         
         question_lower = str(question).lower()
         
-        # Mapeo de keywords a tipos de juego
-        game_mapping = {
-            'DOTA': ['dota', 'dota 2', 'dota2'],
-            'Valorant': ['valorant'],
-            'CS:GO': ['cs:go', 'csgo', 'counter-strike'],
-            'League of Legends': ['league of legends', 'lol', 'leagueoflegends'],
-            'Fortnite': ['fortnite'],
-            'Minecraft': ['minecraft'],
-            'Overwatch': ['overwatch'],
-            'Apex Legends': ['apex', 'apex legends'],
-            'Call of Duty': ['call of duty', 'cod'],
-            'Hearthstone': ['hearthstone'],
-            'StarCraft': ['starcraft', 'starcraft 2', 'sc2'],
-            'Dota2': ['the international', 'ti8', 'ti9', 'ti10', 'ti11'],
-            'Fighting Games': ['fighting', 'street fighter', 'tekken', 'mortal kombat'],
-            'Esports': ['esports', 'esport', 'tournament', 'champion'],
-            'Streaming': ['twitch', 'youtube', 'streamer', 'streaming'],
-        }
-        
-        for game_type, keywords in game_mapping.items():
+        # Mapeo de keywords a juego esports (orden importante: más específico primero)
+        game_mapping = [
+            ('DOTA',              ['dota', 'dota 2', 'dota2', 'the international', 'ti8', 'ti9', 'ti10', 'ti11', 'ti12', 'ti13']),
+            ('Valorant',          ['valorant', 'vct ', 'valorant champions']),
+            ('CS:GO',             ['cs:go', 'csgo', 'counter-strike', 'blast premier', 'blast bounty', 'esl pro', 'iem ', 'faceit', 'pgl major']),
+            ('League of Legends', ['league of legends', 'leagueoflegends', 'lck ', 'lcs ', 'lec ', 'worlds 20', 'msi 20']),
+            ('Fortnite',          ['fortnite']),
+            ('Overwatch',         ['overwatch', 'owcs']),
+            ('Apex Legends',      ['apex legends', 'apex legends global']),
+            ('Call of Duty',      ['call of duty league', 'cod league', 'cdl ']),
+            ('Hearthstone',       ['hearthstone', 'hct ']),
+            ('StarCraft',         ['starcraft', 'starcraft 2', 'sc2']),
+            ('Rocket League',     ['rocket league', 'rlcs']),
+            ('Rainbow Six',       ['rainbow six', 'r6 siege', 'six invitational']),
+            ('Esports General',   ['esports', 'esport']),
+        ]
+
+        for game_type, keywords in game_mapping:
             for keyword in keywords:
                 if keyword in question_lower:
                     return game_type
-        
-        # Si solo dice "game" o "gaming", retornar genérico
-        if 'game' in question_lower or 'gaming' in question_lower:
-            return 'Gaming'
-        
-        return None
+
+        return 'Esports General'
     
     @staticmethod
     def extract_bet_type(question: str) -> Optional[str]:
@@ -435,22 +463,59 @@ class DataTransformer:
         logger.info("Iniciando limpieza de mercados GAMING...")
         df = df.copy()
         
-        # PASO 1: Filtrar solo Gaming/Esports
-        gaming_keywords = ['game', 'gaming', 'esports', 'esport', 'stream', 'twitch', 
-                          'dota', 'cs:go', 'valorant', 'fortnite', 'minecraft', 
-                          'overwatch', 'league', 'lol', 'nba 2k', 'madden', 'fifa', 'nfl']
-        
-        df['question_lower'] = df['question'].str.lower()
-        gaming_mask = df['question_lower'].str.contains('|'.join(gaming_keywords), regex=True, na=False)
-        df = df[gaming_mask].copy()
-        
+        # PASO 1: Filtrar SOLO Esports competitivos
+        esports_keywords = [
+            'dota', 'dota 2', 'dota2', 'the international',
+            'league of legends', 'leagueoflegends',
+            'valorant', 'cs:go', 'csgo', 'counter-strike',
+            'overwatch', 'apex legends',
+            'rainbow six', 'r6',
+            'fortnite',
+            'call of duty league', 'cod league',
+            'hearthstone', 'starcraft',
+            'rocket league',
+            'esports', 'esport',
+            'blast premier', 'blast bounty', 'esl pro', 'iem ',
+            'faceit', 'pgl major', 'vct ', 'valorant champions',
+            'lck ', 'lcs ', 'lec ', 'worlds 20', 'msi 20',
+            'rlcs', 'owcs', 'hct ', 'dreamhack',
+        ]
+        exclude_keywords = [
+            'nfl', 'nba', 'fifa world cup', 'soccer', 'baseball',
+            'hockey ', 'tennis', 'golf ', 'boxing', 'ufc', 'mma',
+            'horse', 'election', 'politic', 'stock', 'bitcoin',
+        ]
+
+        df['question_lower'] = df['question'].fillna('').str.lower()
+        esports_mask = df['question_lower'].str.contains(
+            '|'.join([re.escape(k) for k in esports_keywords]), regex=True, na=False
+        )
+        exclude_mask = df['question_lower'].str.contains(
+            '|'.join(exclude_keywords), regex=True, na=False
+        )
+        df = df[esports_mask & ~exclude_mask].copy()
+
         initial_count = len(df)
-        logger.info(f"Mercados GAMING encontrados: {initial_count}")
+        logger.info(f"Mercados ESPORTS encontrados: {initial_count}")
         
-        # PASO 2: Deduplicar por ID
-        dup_count = len(df[df.duplicated(subset=['id'], keep=False)])
-        df = df.drop_duplicates(subset=['id'], keep='first')
-        logger.info(f"Duplicados removidos: {dup_count - (dup_count - len(df))}")
+        # PASO 2: Deduplicar por contenido real (el id cambia con cada actualización,
+        # pero pregunta + slug + activo + cerrado + fechaFin identifican el mismo mercado).
+        # Se ordena por updatedAt desc para conservar el registro más reciente.
+        before_dedup = len(df)
+        if 'updatedAt' in df.columns:
+            df['_updatedAt_sort'] = pd.to_datetime(df['updatedAt'], errors='coerce')
+            df = df.sort_values('_updatedAt_sort', ascending=False)
+        else:
+            df['_updatedAt_sort'] = pd.NaT
+
+        # Clave de deduplicación: campos que identifican un mercado único
+        dedup_cols = [
+            c for c in ['question', 'bet_type', 'gaming_type', 'slug', 'active', 'closed', 'endDate']
+            if c in df.columns
+        ]
+        df = df.drop_duplicates(subset=dedup_cols, keep='first')
+        df = df.drop(columns=['_updatedAt_sort'])
+        logger.info(f"Duplicados removidos (mismo mercado, distinto id): {before_dedup - len(df)}")
         
         # PASO 3: Extraer características de gaming
         df['gaming_type'] = df['question'].apply(DataTransformer.extract_gaming_type)
@@ -506,6 +571,7 @@ class DataTransformer:
             'volume', 'volume24hr', 'volume1wk', 'liquidity', 'liquidityAmm', 'liquidityClob',
             'lastTradePrice', 'bestBid', 'bestAsk', 'spread',
             'outcomes_list', 'outcome_count', 'prices_list',
+            'events',
             'active', 'closed', 'featured',
             'createdAt', 'updatedAt', 'endDate', 'startDate',
             'slug', 'marketType', 'description'
