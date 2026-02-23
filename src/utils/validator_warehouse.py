@@ -33,15 +33,15 @@ class WarehouseValidator:
         logger.info("\n=== VALIDACIÓN DE ESQUEMA ===")
         
         expected_tables = {
-            'dim_date': 'Dimensión Temporal',
-            'dim_event': 'Dimensión Eventos',
-            'dim_market': 'Dimensión Mercados',
-            'dim_series': 'Dimensión Series',
-            'dim_tag': 'Dimensión Tags',
-            'fact_event_tag': 'Relaciones Event-Tag',
-            'fact_market_event': 'Relaciones Market-Event',
-            'fact_market_metrics': 'Métricas de Mercados',
-            'fact_event_metrics': 'Métricas de Eventos'
+            'dim_fecha':                  'Dimensión Temporal',
+            'dim_videojuego':             'Dimensión Videojuegos',
+            'dim_serie_gaming':           'Dimensión Series Gaming',
+            'dim_evento_gaming':          'Dimensión Eventos Gaming',
+            'dim_tag_gaming':             'Dimensión Tags Gaming',
+            'dim_mercado_gaming':         'Dimensión Mercados Gaming',
+            'fact_mercado_evento_gaming': 'Relaciones Mercado-Evento',
+            'fact_evento_tag_gaming':     'Relaciones Evento-Tag',
+            'fact_metricas_gaming':       'Métricas Gaming',
         }
         
         table_counts = {}
@@ -77,11 +77,12 @@ class WarehouseValidator:
         
         # Validar IDs únicos en dimensiones
         unique_id_checks = {
-            'dim_event': 'event_id',
-            'dim_market': 'market_id',
-            'dim_series': 'series_id',
-            'dim_tag': 'tag_id',
-            'dim_date': 'date_id'
+            'dim_evento_gaming':  'evento_id',
+            'dim_mercado_gaming': 'mercado_id',
+            'dim_serie_gaming':   'serie_id',
+            'dim_tag_gaming':     'tag_id',
+            'dim_fecha':          'fecha_id',
+            'dim_videojuego':     'videojuego_id',
         }
         
         logger.info("\nVerificando ID únicos:")
@@ -103,68 +104,62 @@ class WarehouseValidator:
                 logger.error(f"✗ {table}: Error - {e}")
                 all_valid = False
         
-        # Validar relaciones event-tag
-        logger.info("\nVerificando relaciones event-tag:")
+        # Validar relaciones evento-tag
+        logger.info("\nVerificando relaciones evento-tag:")
         try:
             self.cursor.execute("""
-                SELECT COUNT(*) as orphaned
-                FROM fact_event_tag fet
-                LEFT JOIN dim_event de ON fet.event_id = de.event_id
-                LEFT JOIN dim_tag dt ON fet.tag_id = dt.tag_id
-                WHERE de.event_id IS NULL OR dt.tag_id IS NULL
+                SELECT COUNT(*) AS orphaned
+                FROM fact_evento_tag_gaming fet
+                LEFT JOIN dim_evento_gaming de ON fet.evento_id = de.evento_id
+                LEFT JOIN dim_tag_gaming dt ON fet.tag_id = dt.tag_id
+                WHERE de.evento_id IS NULL OR dt.tag_id IS NULL
             """)
             orphaned = self.cursor.fetchone()[0]
-            
             if orphaned == 0:
-                logger.info("✓ fact_event_tag: Sin relaciones huérfanas (válido)")
+                logger.info("✓ fact_evento_tag_gaming: Sin relaciones huérfanas (válido)")
             else:
-                logger.warning(f"✗ fact_event_tag: {orphaned:,} relaciones huérfanas")
+                logger.warning(f"✗ fact_evento_tag_gaming: {orphaned:,} relaciones huérfanas")
                 all_valid = False
-        
         except Exception as e:
-            logger.error(f"✗ fact_event_tag: Error - {e}")
-        
-        # Validar relaciones market-event
-        logger.info("\nVerificando relaciones market-event:")
+            logger.error(f"✗ fact_evento_tag_gaming: Error - {e}")
+
+        # Validar relaciones mercado-evento
+        logger.info("\nVerificando relaciones mercado-evento:")
         try:
             self.cursor.execute("""
-                SELECT COUNT(*) as orphaned
-                FROM fact_market_event fme
-                LEFT JOIN dim_market dm ON fme.market_id = dm.market_id
-                LEFT JOIN dim_event de ON fme.event_id = de.event_id
-                WHERE dm.market_id IS NULL OR de.event_id IS NULL
+                SELECT COUNT(*) AS orphaned
+                FROM fact_mercado_evento_gaming fme
+                LEFT JOIN dim_mercado_gaming dm ON fme.mercado_id = dm.mercado_id
+                LEFT JOIN dim_evento_gaming de ON fme.evento_id = de.evento_id
+                WHERE dm.mercado_id IS NULL OR de.evento_id IS NULL
             """)
             orphaned = self.cursor.fetchone()[0]
-            
             if orphaned == 0:
-                logger.info("✓ fact_market_event: Sin relaciones huérfanas (válido)")
+                logger.info("✓ fact_mercado_evento_gaming: Sin relaciones huérfanas (válido)")
             else:
-                logger.warning(f"✗ fact_market_event: {orphaned:,} relaciones huérfanas")
+                logger.warning(f"✗ fact_mercado_evento_gaming: {orphaned:,} relaciones huérfanas")
                 all_valid = False
-        
         except Exception as e:
-            logger.error(f"✗ fact_market_event: Error - {e}")
-        
-        # Validar métricas de mercados
-        logger.info("\nVerificando fact_market_metrics:")
+            logger.error(f"✗ fact_mercado_evento_gaming: Error - {e}")
+
+        # Validar métricas gaming
+        logger.info("\nVerificando fact_metricas_gaming:")
         try:
             self.cursor.execute("""
-                SELECT COUNT(*) as orphaned
-                FROM fact_market_metrics fmm
-                LEFT JOIN dim_market dm ON fmm.market_id = dm.market_id
-                LEFT JOIN dim_date dd ON fmm.date_id = dd.date_id
-                WHERE dm.market_id IS NULL OR dd.date_id IS NULL
+                SELECT COUNT(*) AS orphaned
+                FROM fact_metricas_gaming fmg
+                LEFT JOIN dim_mercado_gaming dm ON fmg.mercado_id = dm.mercado_id
+                LEFT JOIN dim_fecha df ON fmg.fecha_id = df.fecha_id
+                WHERE dm.mercado_id IS NULL OR df.fecha_id IS NULL
             """)
             orphaned = self.cursor.fetchone()[0]
-            
             if orphaned == 0:
-                logger.info("✓ fact_market_metrics: Sin relaciones huérfanas (válido)")
+                logger.info("✓ fact_metricas_gaming: Sin relaciones huérfanas (válido)")
             else:
-                logger.warning(f"✗ fact_market_metrics: {orphaned:,} relaciones huérfanas")
+                logger.warning(f"✗ fact_metricas_gaming: {orphaned:,} relaciones huérfanas")
                 all_valid = False
-        
         except Exception as e:
-            logger.error(f"✗ fact_market_metrics: Error - {e}")
+            logger.error(f"✗ fact_metricas_gaming: Error - {e}")
         
         return all_valid
     
@@ -175,16 +170,16 @@ class WarehouseValidator:
         stats = {}
         
         # Estadísticas de eventos
-        logger.info("\nEventos:")
+        logger.info("\nEventos gaming:")
         try:
             self.cursor.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN is_active = true THEN 1 ELSE 0 END) as activos,
-                    SUM(CASE WHEN is_closed = true THEN 1 ELSE 0 END) as cerrados,
-                    SUM(CASE WHEN is_featured = true THEN 1 ELSE 0 END) as destacados,
-                    COUNT(DISTINCT category) as categorías_únicas
-                FROM dim_event
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN es_activo  = true THEN 1 ELSE 0 END) AS activos,
+                    SUM(CASE WHEN es_cerrado = true THEN 1 ELSE 0 END) AS cerrados,
+                    SUM(CASE WHEN es_destacado = true THEN 1 ELSE 0 END) AS destacados,
+                    COUNT(DISTINCT categoria) AS categorias_unicas
+                FROM dim_evento_gaming
             """)
             row = self.cursor.fetchone()
             logger.info(f"  Total: {row[0]:,} registros")
@@ -193,70 +188,60 @@ class WarehouseValidator:
             logger.info(f"  Destacados: {row[3]:,}")
             logger.info(f"  Categorías únicas: {row[4]:,}")
             stats['events'] = row
-        
         except Exception as e:
             logger.error(f"Error en estadísticas de eventos: {e}")
-        
+
         # Estadísticas de mercados
-        logger.info("\nMercados:")
+        logger.info("\nMercados gaming:")
         try:
             self.cursor.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN is_active = true THEN 1 ELSE 0 END) as activos,
-                    SUM(CASE WHEN is_closed = true THEN 1 ELSE 0 END) as cerrados,
-                    SUM(CASE WHEN is_featured = true THEN 1 ELSE 0 END) as destacados,
-                    COUNT(DISTINCT category) as categorías_únicas,
-                    COUNT(DISTINCT market_type) as tipos_únicos
-                FROM dim_market
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN esta_activo  = true THEN 1 ELSE 0 END) AS activos,
+                    SUM(CASE WHEN esta_cerrado = true THEN 1 ELSE 0 END) AS cerrados,
+                    COUNT(DISTINCT tipo_apuesta) AS tipos_unicos,
+                    COUNT(DISTINCT videojuego_id) AS juegos_unicos
+                FROM dim_mercado_gaming
             """)
             row = self.cursor.fetchone()
             logger.info(f"  Total: {row[0]:,} registros")
             logger.info(f"  Activos: {row[1]:,}")
             logger.info(f"  Cerrados: {row[2]:,}")
-            logger.info(f"  Destacados: {row[3]:,}")
-            logger.info(f"  Categorías únicas: {row[4]:,}")
-            logger.info(f"  Tipos únicos: {row[5]:,}")
+            logger.info(f"  Tipos de apuesta únicos: {row[3]:,}")
+            logger.info(f"  Videojuegos únicos: {row[4]:,}")
             stats['markets'] = row
-        
         except Exception as e:
             logger.error(f"Error en estadísticas de mercados: {e}")
-        
+
         # Estadísticas de relaciones
         logger.info("\nRelaciones:")
         try:
-            self.cursor.execute("SELECT COUNT(*) FROM fact_event_tag")
-            event_tags = self.cursor.fetchone()[0]
-            logger.info(f"  Event-Tag: {event_tags:,} relaciones")
-            
-            self.cursor.execute("SELECT COUNT(*) FROM fact_market_event")
-            market_events = self.cursor.fetchone()[0]
-            logger.info(f"  Market-Event: {market_events:,} relaciones")
-            
-            stats['relations'] = {
-                'event_tags': event_tags,
-                'market_events': market_events
-            }
-        
+            self.cursor.execute("SELECT COUNT(*) FROM fact_evento_tag_gaming")
+            evento_tags = self.cursor.fetchone()[0]
+            logger.info(f"  Evento-Tag: {evento_tags:,} relaciones")
+
+            self.cursor.execute("SELECT COUNT(*) FROM fact_mercado_evento_gaming")
+            mercado_eventos = self.cursor.fetchone()[0]
+            logger.info(f"  Mercado-Evento: {mercado_eventos:,} relaciones")
+
+            stats['relations'] = {'evento_tags': evento_tags, 'mercado_eventos': mercado_eventos}
         except Exception as e:
             logger.error(f"Error en estadísticas de relaciones: {e}")
-        
+
         # Estadísticas de métricas
         logger.info("\nMétricas:")
         try:
-            self.cursor.execute("SELECT COUNT(*) FROM fact_market_metrics")
-            market_metrics = self.cursor.fetchone()[0]
-            logger.info(f"  Market Metrics: {market_metrics:,} registros")
-            
-            self.cursor.execute("SELECT COUNT(*) FROM fact_event_metrics")
-            event_metrics = self.cursor.fetchone()[0]
-            logger.info(f"  Event Metrics: {event_metrics:,} registros")
-            
-            stats['metrics'] = {
-                'market_metrics': market_metrics,
-                'event_metrics': event_metrics
-            }
-        
+            self.cursor.execute("""
+                SELECT COUNT(*),
+                       COALESCE(SUM(volumen_total), 0),
+                       COALESCE(SUM(liquidez_total), 0)
+                FROM fact_metricas_gaming
+            """)
+            row = self.cursor.fetchone()
+            logger.info(f"  Registros métricas: {row[0]:,}")
+            logger.info(f"  Volumen total:      ${row[1]:,.2f}")
+            logger.info(f"  Liquidez total:     ${row[2]:,.2f}")
+            stats['metricas'] = {'total': row[0], 'volumen': row[1], 'liquidez': row[2]}
         except Exception as e:
             logger.error(f"Error en estadísticas de métricas: {e}")
         
