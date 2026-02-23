@@ -32,6 +32,8 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.transformer_data import DataTransformer
+from utils.spark_cleaner import SparkCleaner
+from utils.validator_warehouse import WarehouseValidator
 
 # Cargar variables de entorno
 load_dotenv()
@@ -353,7 +355,7 @@ class WarehouseLoader:
                     r.get('creationDate') if pd.notna(r.get('creationDate')) else None,
                     r.get('startDate') if pd.notna(r.get('startDate')) else None,
                     r.get('endDate') if pd.notna(r.get('endDate')) else None,
-                    DataTransformer.clean_string(r.get('resolutionSource'), 500),
+                    DataTransformer.clean_string(r.get('resolutionSource'), 500) or 'Sin fuente',
                     serie_id,
                 ))
 
@@ -580,7 +582,7 @@ class WarehouseLoader:
                     bool(r['closed']) if pd.notna(r.get('closed')) else False,
                     pd.to_datetime(r['endDate'], errors='coerce') if pd.notna(r.get('endDate')) else None,
                     outcomes,
-                    str(r.get('resolutionSource', ''))[:500] or None,
+                    (str(r.get('resolutionSource', '') or 'Sin fuente'))[:500],
                     pd.to_datetime(r['createdAt'], errors='coerce') if pd.notna(r.get('createdAt')) else None,
                     pd.to_datetime(r['updatedAt'], errors='coerce') if pd.notna(r.get('updatedAt')) else None,
                 ))
@@ -831,6 +833,18 @@ class WarehouseLoader:
                     series_df = series_df[series_df['id'].astype(str).isin(series_ids)].copy()
                     logger.info(f"  Series gaming: {len(series_df):,}")
 
+            # 1.5 Limpieza PySpark antes de cargar a NeonDB
+            logger.info("\n[1.5/3] Limpieza PySpark (no-nulls, dedup, tipos)...")
+            df = SparkCleaner.clean_markets(df)
+            if not events_df.empty:
+                events_df = SparkCleaner.clean_events(events_df)
+            if not series_df.empty:
+                series_df = SparkCleaner.clean_series(series_df)
+
+            if df.empty:
+                logger.error("Sin mercados tras limpieza Spark. Abortando.")
+                return
+
             # 2. Crear schema
             logger.info("\n[2/3] Creando schema gaming en NeonDB...")
             self.create_schema_gaming()
@@ -849,6 +863,12 @@ class WarehouseLoader:
                 self.load_relations_evento_tag_gaming(events_df)
             self.load_fact_metricas_gaming(df)
             self.generate_load_summary()
+
+            # 4. Validación post-carga
+            logger.info("\n[4/3] Validando integridad post-carga...")
+            validator = WarehouseValidator(self.database_url)
+            validator.connect()
+            validator.validate_all()
 
             logger.info("\n" + "=" * 70)
             logger.info("CARGA COMPLETADA EXITOSAMENTE")
