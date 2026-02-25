@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Spark Cleaner - Limpieza de datos con PySpark antes de cargar a NeonDB
 =========================================================================

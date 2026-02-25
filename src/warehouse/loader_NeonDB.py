@@ -1,14 +1,15 @@
 ﻿"""
-Gaming Warehouse Loader
+Cargador del warehouse gaming.
 Carga mercados de videojuegos/esports desde Delta Lake a NeonDB (PostgreSQL).
-Esquema dimensional gaming en espaÃ±ol:
-  - dim_fecha          â†’ DimensiÃ³n temporal
-  - dim_videojuego     â†’ Tipos de juego (DOTA, Valorant, CS:GO, etc.)
-  - dim_mercado_gaming â†’ Preguntas/mercados de apuestas gaming
-  - fact_metricas_gaming â†’ Volumen, liquidez, precios
+
+Esquema dimensional (gaming):
+    - dim_fecha:           dimensión temporal
+    - dim_videojuego:      catálogo de videojuegos/esports
+    - dim_mercado_gaming:  mercados/preguntas de apuestas gaming
+    - fact_metricas_gaming: métricas (volumen, liquidez, precios, etc.)
 
 Uso:
-    python src/warehouse/loader_NeonDB.py
+        python src/warehouse/loader_NeonDB.py
 """
 import os
 import sys

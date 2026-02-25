@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Main - Orquestador del Pipeline de ETL
 Fase 1: Extracción de datos de Polymarket a Delta Lake

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 S3 Uploader - Sube Delta Lake a Amazon S3
 Sube todo el contenido de datalake/ a S3 bucket especificado
